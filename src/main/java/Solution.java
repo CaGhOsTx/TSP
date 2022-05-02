@@ -12,9 +12,6 @@ public class Solution {
 
     @Override
     public String toString() {
-        return "Solution{" +
-                "sequence=" + sequence +
-                ", distance=" + distance +
-                '}';
+        return sequence.toString().replaceAll("\\[]", "") + "\n" + distance;
     }
 }

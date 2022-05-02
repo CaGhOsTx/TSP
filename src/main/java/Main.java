@@ -1,43 +1,25 @@
+import javax.swing.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class Main {
-    static class Distance {
-        public static double between(Location a, Location b){
-            final double radius = 6371;
 
-            double lat_diff = (a.latitude - b.latitude);
-            double long_diff = (a.longitude - b.longitude);
+    static boolean showLastResult = true;
 
-            double a1 = Math.pow(Math.sin(lat_diff / 2), 2) + Math.pow(Math.sin(long_diff / 2), 2) * Math.cos(a.latitude)
-                    * Math.cos(b.latitude);
-            return radius* 2 * Math.asin(Math.sqrt(a1));
-        }
+    static CoordinateSystem coordinateSystem;
+    static List<Location> coordinates;
+
+    private static double fromLong(double longitude) {
+        return (180 + Math.toDegrees(longitude)) / 360;
     }
 
-    static class Location {
-        int id;
-        double latitude, longitude;
-
-        public Location(int id, double latitude, double longitude) {
-            this.id = id;
-            this.latitude = Math.toRadians(latitude);
-            this.longitude = Math.toRadians(longitude);
-        }
-
-
-
-        @Override
-        public String toString() {
-            return "Location{" +
-                    "id=" + id +
-                    ", latitude=" + latitude +
-                    ", longitude=" + longitude +
-                    '}';
-        }
+    private static double fromLat(double latitude) {
+        return (90 - Math.toDegrees(latitude)) / 180;
     }
 
     static double[][] matrix;
@@ -45,43 +27,51 @@ public class Main {
 
     public static void main(String[] args) throws IOException {
         try(var coords = Files.lines(Path.of("coords.txt"))) {
-            var list = coords.map(s -> s.split(","))
+            coordinates = coords.map(s -> s.split(","))
                     .map(arr -> new Location(Integer.parseInt(arr[0]), Double.parseDouble(arr[1]), Double.parseDouble(arr[2])))
                     .toList();
-            matrix = createMatrix(list);
-            List<Thread> threads = new ArrayList<>();
-            try (var writer = Files.newBufferedWriter(Path.of("Solution.txt"))) {
-                for (int i = 0; i < 4; i++) {
-                    threads.add(new Thread(() -> {
-                        while (true) {
-                            var solution = tsp();
-                            if (solution.distance < minimum.distance) {
-                                minimum = solution;
-                                System.out.println(minimum);
-                                try {
-                                    writer.write(minimum.toString());
-                                    writer.flush();
-                                } catch (IOException e) {
-                                    e.printStackTrace();
-                                }
-                            }
-                            if (Thread.interrupted())
-                                return;
-                        }
-                    }));
-                    threads.get(i).start();
+            coordinateSystem = createCoordinateSystem();
+            matrix = createDistanceMatrix(coordinates);
+        }
+        SwingUtilities.invokeLater(() -> {
+            View gui = new View();
+            if(!showLastResult) {
+                for (int i = 0; i < 4; i++)
+                    new Thread(() -> minPathAlgorithm(gui)).start();
+            }
+            else {
+                minimum = new Solution(Arrays.stream("0, 55, 53, 58, 59, 120, 60, 61, 65, 64, 66, 72, 112, 71, 77, 79, 76, 111, 78, 75, 73, 69, 92, 84, 81, 80, 110, 85, 83, 109, 86, 88, 90, 94, 100, 103, 102, 105, 96, 101, 107, 104, 99, 98, 95, 108, 89, 87, 82, 74, 67, 63, 115, 56, 52, 54, 50, 47, 45, 43, 42, 41, 38, 36, 30, 28, 21, 19, 117, 18, 118, 20, 17, 15, 16, 23, 27, 29, 31, 33, 35, 37, 40, 106, 114, 68, 113, 70, 34, 25, 26, 116, 24, 10, 119, 5, 6, 1, 3, 2, 4, 14, 11, 8, 7, 9, 12, 13, 22, 32, 48, 39, 44, 46, 51, 49, 57, 93, 97, 91, 62, 0".split(", ")).map(Integer::parseInt).toList(), 1784.493783807264);
+                gui.repaint();
+            }
+        });
+    }
+
+    private static CoordinateSystem createCoordinateSystem() {
+        var tmp = new CoordinateSystem(900,900);
+        coordinates.forEach(location -> tmp.add(new CoordinateSystem.Point(fromLat(location.latitude), fromLong(location.longitude))));
+        tmp.normalize();
+        return tmp;
+    }
+
+    private static void minPathAlgorithm(View gui) {
+        while (true) {
+            var solution = tsp();
+            if (solution.distance < minimum.distance) {
+                minimum = solution;
+                System.out.println(minimum);
+                try (var writer = Files.newBufferedWriter(Path.of("Solution.txt"), StandardOpenOption.APPEND)) {
+                    writer.write(minimum.toString());
+                    writer.newLine();
+                    writer.flush();
+                    gui.repaint();
+                }catch (IOException e) {
+                    e.printStackTrace();
                 }
-                Scanner sc = new Scanner(System.in);
-                while (sc.hasNextLine()) {
-                    Thread.onSpinWait();
-                }
-                threads.forEach(Thread::interrupt);
-                System.out.println("Stopping program");
             }
         }
     }
 
-    private static double[][] createMatrix(List<Location> list) {
+    private static double[][] createDistanceMatrix(List<Location> list) {
         var matrix = new double[121][121];
         for (int i = 0; i < 121; i++)
             for (int j = 0; j < 121; j++)
